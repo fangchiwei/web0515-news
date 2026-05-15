@@ -8,6 +8,9 @@ const FEED_URL = process.env.FEED_URL || "https://news.google.com/rss?hl=zh-TW&g
 const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 const CACHE_MS = 5 * 60 * 1000;
 const DEFAULT_LIMIT = 12;
+const REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || "";
+const REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
+const VISIT_META_KEY = process.env.VISIT_META_KEY || "visit:last-at";
 
 app.use(cors({ origin: CORS_ORIGIN }));
 
@@ -21,17 +24,25 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "web0515-news-api" });
 });
 
-app.get("/api/visit-meta", (_req, res) => {
-  const nowIso = new Date().toISOString();
-  const previousVisitAt = lastVisitAt;
+app.get("/api/visit-meta", async (_req, res) => {
+  try {
+    const nowIso = new Date().toISOString();
+    const previousVisitAt = await readLastVisitAt();
 
-  lastVisitAt = nowIso;
+    await writeLastVisitAt(nowIso);
 
-  res.json({
-    previousVisitAt,
-    currentVisitAt: nowIso,
-    hasPrevious: Boolean(previousVisitAt)
-  });
+    res.json({
+      previousVisitAt,
+      currentVisitAt: nowIso,
+      hasPrevious: Boolean(previousVisitAt),
+      persistence: hasRedisPersistence() ? "redis" : "memory"
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "failed_to_read_visit_meta",
+      message: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
 });
 
 app.get("/api/headlines", async (req, res) => {
@@ -163,4 +174,53 @@ function formatDateKey(date) {
   const day = parts.find((p) => p.type === "day")?.value;
 
   return `${year}-${month}-${day}`;
+}
+
+function hasRedisPersistence() {
+  return Boolean(REDIS_REST_URL && REDIS_REST_TOKEN);
+}
+
+async function readLastVisitAt() {
+  if (!hasRedisPersistence()) {
+    return lastVisitAt;
+  }
+
+  const response = await fetch(
+    `${REDIS_REST_URL}/get/${encodeURIComponent(VISIT_META_KEY)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${REDIS_REST_TOKEN}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Redis get failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  return typeof payload?.result === "string" ? payload.result : null;
+}
+
+async function writeLastVisitAt(isoTime) {
+  lastVisitAt = isoTime;
+
+  if (!hasRedisPersistence()) {
+    return;
+  }
+
+  const response = await fetch(
+    `${REDIS_REST_URL}/set/${encodeURIComponent(VISIT_META_KEY)}/${encodeURIComponent(isoTime)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${REDIS_REST_TOKEN}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Redis set failed: ${response.status}`);
+  }
 }

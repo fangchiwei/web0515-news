@@ -58,3 +58,18 @@ git push
 
 - 免費 Render 服務可能會休眠，第一次請求會稍慢。
 - 若要更安全，將 `CORS_ORIGIN` 限制成你的 Pages 網域。
+
+## 永久保存上次訪客時間（免費）
+
+若你要讓「上一次有人進入」在 Render 重啟後仍保留，建議使用 Upstash Redis（免費方案可用）。
+
+1. 到 Upstash 建立 Redis Database。
+2. 取得兩個值：
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+3. 到 Render 服務的 Environment 加入：
+   - `UPSTASH_REDIS_REST_URL=...`
+   - `UPSTASH_REDIS_REST_TOKEN=...`
+   - `VISIT_META_KEY=visit:last-at`（可選）
+
+設定完成後，`/api/visit-meta` 會改用 Redis 儲存；若未設定則自動退回記憶體模式。
