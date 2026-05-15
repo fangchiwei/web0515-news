@@ -11,6 +11,8 @@ const DEFAULT_LIMIT = 12;
 const REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || "";
 const REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "";
 const VISIT_META_KEY = process.env.VISIT_META_KEY || "visit:last-at";
+const NEWS_CACHE_KEY = process.env.NEWS_CACHE_KEY || "news:daily-snapshot";
+const NEWS_JOB_TOKEN = process.env.NEWS_JOB_TOKEN || "";
 
 app.use(cors({ origin: CORS_ORIGIN }));
 
@@ -71,17 +73,82 @@ app.get("/api/headlines", async (req, res) => {
   }
 });
 
+app.post("/api/jobs/cache-news", async (req, res) => {
+  if (!isAuthorizedJobRequest(req)) {
+    res.status(401).json({
+      error: "unauthorized",
+      message: "Missing or invalid job token"
+    });
+    return;
+  }
+
+  try {
+    const items = await getNewsItems({ forceRefresh: true });
+    const { todayKey, yesterdayKey } = getTaiwanDateKeys();
+
+    res.json({
+      ok: true,
+      total: items.length,
+      todayKey,
+      yesterdayKey,
+      persistence: hasRedisPersistence() ? "redis" : "memory"
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "failed_to_cache_news",
+      message: error instanceof Error ? error.message : "Unknown error"
+    });
+  }
+});
+
 app.listen(port, () => {
   console.log(`News API running on port ${port}`);
 });
 
-async function getNewsItems() {
+async function getNewsItems(options = {}) {
   const now = Date.now();
+  const { forceRefresh = false } = options;
 
-  if (cache.expiresAt > now && cache.items.length > 0) {
+  if (!forceRefresh && cache.expiresAt > now && cache.items.length > 0) {
     return cache.items;
   }
 
+  if (!forceRefresh) {
+    let storedItems = [];
+
+    try {
+      storedItems = await readNewsSnapshot();
+    } catch (error) {
+      console.warn("Failed to read news snapshot from Redis:", error);
+    }
+
+    if (storedItems.length > 0) {
+      cache = {
+        expiresAt: now + CACHE_MS,
+        items: storedItems
+      };
+
+      return storedItems;
+    }
+  }
+
+  const mapped = await fetchFreshNewsItems();
+
+  cache = {
+    expiresAt: now + CACHE_MS,
+    items: mapped
+  };
+
+  try {
+    await writeNewsSnapshot(mapped);
+  } catch (error) {
+    console.warn("Failed to write news snapshot to Redis:", error);
+  }
+
+  return mapped;
+}
+
+async function fetchFreshNewsItems() {
   const response = await fetch(FEED_URL, {
     headers: {
       Accept: "application/rss+xml, text/xml, application/xml"
@@ -125,11 +192,6 @@ async function getNewsItems() {
       };
     })
     .filter(Boolean);
-
-  cache = {
-    expiresAt: now + CACHE_MS,
-    items: mapped
-  };
 
   return mapped;
 }
@@ -180,6 +242,17 @@ function hasRedisPersistence() {
   return Boolean(REDIS_REST_URL && REDIS_REST_TOKEN);
 }
 
+function isAuthorizedJobRequest(req) {
+  if (!NEWS_JOB_TOKEN) {
+    return true;
+  }
+
+  const header = req.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+
+  return token === NEWS_JOB_TOKEN;
+}
+
 async function readLastVisitAt() {
   if (!hasRedisPersistence()) {
     return lastVisitAt;
@@ -222,5 +295,70 @@ async function writeLastVisitAt(isoTime) {
 
   if (!response.ok) {
     throw new Error(`Redis set failed: ${response.status}`);
+  }
+}
+
+async function readNewsSnapshot() {
+  if (!hasRedisPersistence()) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${REDIS_REST_URL}/get/${encodeURIComponent(NEWS_CACHE_KEY)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${REDIS_REST_TOKEN}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Redis get failed: ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const parsed = safeParseJson(payload?.result);
+
+  if (!parsed || !Array.isArray(parsed.items)) {
+    return [];
+  }
+
+  return parsed.items;
+}
+
+async function writeNewsSnapshot(items) {
+  if (!hasRedisPersistence()) {
+    return;
+  }
+
+  const body = JSON.stringify({
+    fetchedAt: new Date().toISOString(),
+    items
+  });
+
+  const response = await fetch(`${REDIS_REST_URL}/set/${encodeURIComponent(NEWS_CACHE_KEY)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${REDIS_REST_TOKEN}`,
+      "Content-Type": "text/plain"
+    },
+    body
+  });
+
+  if (!response.ok) {
+    throw new Error(`Redis set failed: ${response.status}`);
+  }
+}
+
+function safeParseJson(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
 }

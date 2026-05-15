@@ -73,3 +73,38 @@ git push
    - `VISIT_META_KEY=visit:last-at`（可選）
 
 設定完成後，`/api/visit-meta` 會改用 Redis 儲存；若未設定則自動退回記憶體模式。
+
+## 每天自動抓新聞寫入 Redis
+
+專案已內建 GitHub Actions 排程檔 [daily-news-cache.yml](.github/workflows/daily-news-cache.yml)，每天會呼叫一次後端 API，把最新新聞快照寫進 Redis。
+
+### Render 環境變數
+
+請在 Render 加入：
+
+- `NEWS_JOB_TOKEN=你自訂的一串隨機字串`
+- `NEWS_CACHE_KEY=news:daily-snapshot`（可選）
+
+### GitHub Secrets
+
+到 GitHub repository 的 Settings > Secrets and variables > Actions，新增：
+
+- `NEWS_CACHE_JOB_URL=https://web0515-news.onrender.com/api/jobs/cache-news`
+- `NEWS_JOB_TOKEN=和 Render 一樣的字串`
+
+### 排程時間
+
+- workflow 目前設定為每天 UTC 00:05 執行
+- 台灣時間約為每天 08:05
+
+### 手動測試
+
+你也可以手動呼叫：
+
+```bash
+curl -X POST \
+   -H "Authorization: Bearer 你的NEWS_JOB_TOKEN" \
+   https://web0515-news.onrender.com/api/jobs/cache-news
+```
+
+成功後，`/api/headlines` 會優先讀 Redis 內的新聞快照；如果 Redis 沒資料或讀取失敗，才會即時重新抓新聞。
