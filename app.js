@@ -1,5 +1,6 @@
 const FEED_URL = "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant";
 const PROXY_URL = "https://api.allorigins.win/raw?url=";
+const API_BASE_URL = window.NEWS_API_BASE_URL || "";
 
 const statusEl = document.getElementById("status");
 const todayDateEl = document.getElementById("todayDate");
@@ -19,20 +20,15 @@ async function loadHeadlines() {
   refreshBtn.disabled = true;
 
   try {
-    const rssText = await fetchRssText();
-    const items = parseRssItems(rssText);
+    const payload = await fetchHeadlinesData();
 
-    const { todayKey, yesterdayKey } = getTaiwanDateKeys();
-    todayDateEl.textContent = todayKey;
-    yesterdayDateEl.textContent = yesterdayKey;
+    todayDateEl.textContent = payload.todayKey;
+    yesterdayDateEl.textContent = payload.yesterdayKey;
 
-    const todayItems = items.filter((item) => item.dateKey === todayKey).slice(0, 12);
-    const yesterdayItems = items.filter((item) => item.dateKey === yesterdayKey).slice(0, 12);
+    renderList(todayListEl, payload.todayItems);
+    renderList(yesterdayListEl, payload.yesterdayItems);
 
-    renderList(todayListEl, todayItems);
-    renderList(yesterdayListEl, yesterdayItems);
-
-    setStatus(`更新完成，共讀取 ${items.length} 筆新聞。`);
+    setStatus(`更新完成，共讀取 ${payload.total} 筆新聞。`);
   } catch (error) {
     renderError(todayListEl, "讀取失敗，請稍後再試。");
     renderError(yesterdayListEl, "讀取失敗，請稍後再試。");
@@ -41,6 +37,41 @@ async function loadHeadlines() {
   } finally {
     refreshBtn.disabled = false;
   }
+}
+
+async function fetchHeadlinesData() {
+  const apiUrl = `${API_BASE_URL}/api/headlines?limit=12`;
+
+  if (API_BASE_URL) {
+    try {
+      const apiResponse = await fetch(apiUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      });
+
+      if (!apiResponse.ok) {
+        throw new Error(`API error: ${apiResponse.status}`);
+      }
+
+      return apiResponse.json();
+    } catch (error) {
+      console.warn("Backend API unavailable, fallback to RSS proxy:", error);
+    }
+  }
+
+  const rssText = await fetchRssText();
+  const items = parseRssItems(rssText);
+  const { todayKey, yesterdayKey } = getTaiwanDateKeys();
+
+  return {
+    todayKey,
+    yesterdayKey,
+    total: items.length,
+    todayItems: items.filter((item) => item.dateKey === todayKey).slice(0, 12),
+    yesterdayItems: items.filter((item) => item.dateKey === yesterdayKey).slice(0, 12)
+  };
 }
 
 async function fetchRssText() {
