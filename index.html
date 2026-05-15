@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>今日與昨日頭條</title>
+    <meta
+      name="description"
+      content="開啟頁面即可查看今天與昨天的頭條新聞，適合部署到 GitHub Pages。"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="bg-noise" aria-hidden="true"></div>
+
+    <header class="hero">
+      <p class="kicker">GitHub Pages Demo</p>
+      <h1>今天與昨天的頭條新聞</h1>
+      <p class="subtitle">
+        來源：Google News 台灣 RSS，資料每次開啟頁面時即時更新。
+      </p>
+      <div class="actions">
+        <button id="refreshBtn" type="button">重新整理</button>
+        <p id="status" aria-live="polite">載入中...</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card" aria-labelledby="todayTitle">
+        <div class="card-head">
+          <h2 id="todayTitle">今天</h2>
+          <span id="todayDate" class="date-pill">--</span>
+        </div>
+        <ol id="todayList" class="headline-list"></ol>
+      </section>
+
+      <section class="card" aria-labelledby="yesterdayTitle">
+        <div class="card-head">
+          <h2 id="yesterdayTitle">昨天</h2>
+          <span id="yesterdayDate" class="date-pill">--</span>
+        </div>
+        <ol id="yesterdayList" class="headline-list"></ol>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <small>
+        提示：若新聞來源偶爾連線失敗，按「重新整理」再試一次。
+      </small>
+    </footer>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
