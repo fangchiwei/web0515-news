@@ -15,9 +15,23 @@ let cache = {
   expiresAt: 0,
   items: []
 };
+let lastVisitAt = null;
 
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "web0515-news-api" });
+});
+
+app.get("/api/visit-meta", (_req, res) => {
+  const nowIso = new Date().toISOString();
+  const previousVisitAt = lastVisitAt;
+
+  lastVisitAt = nowIso;
+
+  res.json({
+    previousVisitAt,
+    currentVisitAt: nowIso,
+    hasPrevious: Boolean(previousVisitAt)
+  });
 });
 
 app.get("/api/headlines", async (req, res) => {

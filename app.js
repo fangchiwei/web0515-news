@@ -8,12 +8,17 @@ const yesterdayDateEl = document.getElementById("yesterdayDate");
 const todayListEl = document.getElementById("todayList");
 const yesterdayListEl = document.getElementById("yesterdayList");
 const refreshBtn = document.getElementById("refreshBtn");
+const lastVisitEl = document.getElementById("lastVisit");
 
 refreshBtn.addEventListener("click", () => {
   void loadHeadlines();
 });
 
-void loadHeadlines();
+void initializePage();
+
+async function initializePage() {
+  await Promise.allSettled([loadVisitMeta(), loadHeadlines()]);
+}
 
 async function loadHeadlines() {
   setStatus("載入中...");
@@ -36,6 +41,54 @@ async function loadHeadlines() {
     console.error(error);
   } finally {
     refreshBtn.disabled = false;
+  }
+}
+
+async function loadVisitMeta() {
+  if (!lastVisitEl) {
+    return;
+  }
+
+  if (!API_BASE_URL) {
+    lastVisitEl.textContent = "上一次有人進入：需啟用後端 API 才能顯示";
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/visit-meta`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`visit-meta error: ${response.status}`);
+    }
+
+    const payload = await response.json();
+
+    if (!payload.hasPrevious || !payload.previousVisitAt) {
+      lastVisitEl.textContent = "上一次有人進入：你是第一位訪客";
+      return;
+    }
+
+    const ts = new Date(payload.previousVisitAt);
+    const formatted = new Intl.DateTimeFormat("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(ts);
+
+    lastVisitEl.textContent = `上一次有人進入：${formatted}`;
+  } catch (error) {
+    lastVisitEl.textContent = "上一次有人進入：暫時無法讀取";
+    console.warn("Failed to load visit meta:", error);
   }
 }
 

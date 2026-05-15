@@ -63,6 +63,12 @@ h1 {
   color: var(--muted);
 }
 
+.visit-info {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .actions {
   margin-top: 18px;
   display: flex;
